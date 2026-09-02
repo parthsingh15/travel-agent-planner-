@@ -158,9 +158,17 @@ export async function planTrip(
  * Separated from `planTrip` so the resumable serverless pipeline can persist
  * the research phase and run this stage on its own.
  */
+export type PlanPhases = {
+  /** Run the AI selection calls (hotel, activities, food, transport). */
+  aiSelection?: boolean;
+  /** Run the AI narrative calls (day titles, summary, advice, review). */
+  aiNarrative?: boolean;
+};
+
 export async function planFromResearch(
   research: ResearchBundle,
-  input: PlanTripInput
+  input: PlanTripInput,
+  phases: PlanPhases = { aiSelection: true, aiNarrative: true }
 ): Promise<PlanTripResult> {
   const days = dayCount(input.startDate, input.endDate);
   const nights = Math.max(0, days - 1);
@@ -207,7 +215,7 @@ export async function planFromResearch(
   let aiMeals: Poi[] | null = null;
   let aiStay: Poi | null = null;
 
-  if (ai.configured) {
+  if (ai.configured && phases.aiSelection !== false) {
     const [picked, meals, stay] = await Promise.all([
       aiSelectAttractions(attractionPool, agentCtx, wantedAttractions),
       aiSelectFood(research.food, agentCtx, Math.min(research.food.length, days * 2)),
@@ -236,7 +244,7 @@ export async function planFromResearch(
     : null;
 
   let transportChoice = startingTransport;
-  if (ai.configured && research.intercity?.options?.length) {
+  if (ai.configured && phases.aiSelection !== false && research.intercity?.options?.length) {
     const chosen = await aiChooseTransport(research.intercity.options, agentCtx);
     if (chosen) {
       transportChoice = chosen.option;
@@ -284,7 +292,7 @@ export async function planFromResearch(
   let budgetAdvice: string | null = null;
   let review: AiReview | null = null;
 
-  if (ai.configured) {
+  if (ai.configured && phases.aiNarrative !== false) {
     const [titles, summary, advice, checked] = await Promise.all([
       aiDayTitles(plannedDays, agentCtx),
       aiSummariseResearch(

@@ -35,7 +35,8 @@ export const STAGES = [
   "research:attractions:1",
   "research:attractions:2",
   "research:route",
-  "plan",
+  "plan:build",
+  "plan:enrich",
   "finalise",
 ] as const;
 
@@ -50,7 +51,8 @@ export const STAGE_LABELS: Record<Stage, string> = {
   "research:attractions:1": "activities",
   "research:attractions:2": "activities",
   "research:route": "transportation",
-  plan: "budget",
+  "plan:build": "budget",
+  "plan:enrich": "itinerary",
   finalise: "verification",
 };
 
@@ -175,6 +177,33 @@ export async function advanceGeneration(
 
 type TripRow = Awaited<ReturnType<typeof prisma.trip.findFirst>>;
 
+function toBundle(w: WorkingSet): ResearchBundle {
+  return {
+    origin: w.origin ?? null,
+    destination: w.destination!,
+    mountainous: Boolean(w.mountainous),
+    intercity: w.intercity ?? null,
+    stays: w.stays ?? [],
+    food: w.food ?? [],
+    attractions: w.attractions ?? [],
+    sources: [],
+    warnings: w.warnings ?? [],
+  };
+}
+
+function toPlanInput(trip: NonNullable<TripRow>) {
+  return {
+    destination: trip.destination,
+    origin: trip.origin,
+    startDate: trip.startDate.toISOString().split("T")[0],
+    endDate: trip.endDate.toISOString().split("T")[0],
+    travellers: trip.travelers,
+    budget: trip.budget,
+    travelStyle: trip.travelStyle,
+    interests: trip.interests,
+  };
+}
+
 /** Execute one stage; returns the next stage, or null when finished. */
 async function runStage(
   stage: Stage,
@@ -286,45 +315,26 @@ async function runStage(
         intercity = { leg, realisticDurationMin: realistic, options };
       }
 
-      await saveWorking(generationId, { intercity }, "plan", {
+      await saveWorking(generationId, { intercity }, "plan:build", {
         transportationOutput: asJson({ options: intercity?.options.length ?? 0 }),
       });
-      return "plan";
+      return "plan:build";
     }
 
-    case "plan": {
-      // Selection, AI reasoning, budget fitting, assembly and verification.
-      // Each is fast; the slow network work is already done and persisted.
+    case "plan:build": {
+      // Selection, budget fitting and assembly. AI narrative is deferred to the
+      // next stage so neither request approaches the function time limit.
       const w = await loadWorking(generationId);
-      const plan = await planFromResearch(
-        {
-          origin: w.origin ?? null,
-          destination: w.destination!,
-          mountainous: Boolean(w.mountainous),
-          intercity: w.intercity ?? null,
-          stays: w.stays ?? [],
-          food: w.food ?? [],
-          attractions: w.attractions ?? [],
-          sources: [],
-          warnings: w.warnings ?? [],
-        },
-        {
-          destination: trip.destination,
-          origin: trip.origin,
-          startDate: trip.startDate.toISOString().split("T")[0],
-          endDate: trip.endDate.toISOString().split("T")[0],
-          travellers: trip.travelers,
-          budget: trip.budget,
-          travelStyle: trip.travelStyle,
-          interests: trip.interests,
-        }
-      );
+      const plan = await planFromResearch(toBundle(w), toPlanInput(trip), {
+        aiSelection: true,
+        aiNarrative: false,
+      });
 
       await prisma.itineraryGeneration.update({
         where: { id: generationId },
         data: {
-          currentAgent: STAGE_LABELS.finalise,
-          destinationResearch: asJson({ ...w, _stage: "finalise" satisfies Stage }),
+          currentAgent: STAGE_LABELS["plan:enrich"],
+          destinationResearch: asJson({ ...w, _stage: "plan:enrich" satisfies Stage }),
           budgetOutput: asJson({
             lines: plan.breakdown.lines,
             total: plan.breakdown.total,
@@ -335,13 +345,39 @@ async function runStage(
             shortfall: plan.budgetShortfall,
           }),
           itineraryOutput: asJson({ days: plan.days }),
-          validationOutput: asJson({
-            ...plan.verification,
-            aiReview: plan.ai?.review ?? null,
-          }),
+          validationOutput: asJson(plan.verification),
           supervisorOutput: asJson({ ai: plan.ai, selection: plan.selection }),
         },
       });
+      return "plan:enrich";
+    }
+
+    case "plan:enrich": {
+      // AI day titles, research summary, budget advice and the Checker review.
+      // Best-effort: a failure here must not lose an otherwise valid itinerary.
+      const w = await loadWorking(generationId);
+      try {
+        const plan = await planFromResearch(toBundle(w), toPlanInput(trip), {
+          aiSelection: false,
+          aiNarrative: true,
+        });
+
+        await prisma.itineraryGeneration.update({
+          where: { id: generationId },
+          data: {
+            itineraryOutput: asJson({ days: plan.days }),
+            validationOutput: asJson({
+              ...plan.verification,
+              aiReview: plan.ai?.review ?? null,
+            }),
+            supervisorOutput: asJson({ ai: plan.ai, selection: plan.selection }),
+          },
+        });
+      } catch (error) {
+        console.error("[stages] plan:enrich failed, keeping the built plan:", error);
+      }
+
+      await saveWorking(generationId, {}, "finalise");
       return "finalise";
     }
 
