@@ -4,17 +4,35 @@ import { cookies } from "next/headers";
 import { Role } from "@prisma/client";
 import { prisma } from "./db";
 
-function resolveJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
+/**
+ * Values that ship in .env.example or are obvious stand-ins. Length alone is
+ * not enough: the documented placeholder is 46 characters, so a deployment that
+ * copied .env.example would otherwise sign tokens with a publicly known secret.
+ */
+const PLACEHOLDER_SECRET = /your-super-secret|change-me|change-in-production|^secret$|^changeme|fallback-dev-secret|placeholder|example/i;
 
-  if (secret && secret.length >= 32) return secret;
+/**
+ * Decide the signing secret. Pure and exported so the rules can be tested
+ * directly, rather than by mutating process.env (which bundlers inline).
+ */
+export function resolveJwtSecret(
+  secret: string | undefined,
+  nodeEnv: string | undefined
+): string {
+  const isProduction = nodeEnv === "production";
+  const isPlaceholder = !!secret && PLACEHOLDER_SECRET.test(secret);
+  const longEnough = !!secret && secret.length >= 32;
 
-  // Never let a misconfigured deployment sign tokens with a public constant.
-  if (process.env.NODE_ENV === "production") {
+  if (secret && longEnough && !isPlaceholder) return secret;
+
+  // Never let a misconfigured deployment sign tokens with a guessable constant.
+  if (isProduction) {
     throw new Error(
-      secret
-        ? "JWT_SECRET must be at least 32 characters in production"
-        : "JWT_SECRET is required in production"
+      !secret
+        ? "JWT_SECRET is required in production"
+        : isPlaceholder
+          ? "JWT_SECRET is still a placeholder value — generate a real random secret for production"
+          : "JWT_SECRET must be at least 32 characters in production"
     );
   }
 
@@ -26,7 +44,25 @@ function resolveJwtSecret(): string {
   return "fallback-dev-secret-change-me";
 }
 
-const JWT_SECRET = new TextEncoder().encode(resolveJwtSecret());
+let cachedSecret: Uint8Array | null = null;
+
+/**
+ * Resolve the signing key lazily.
+ *
+ * Evaluating this at module load broke `next build`: the "Collecting page data"
+ * step imports every route with NODE_ENV=production, so a build with no
+ * JWT_SECRET in scope threw before any request existed. A build should not
+ * require runtime secrets — this defers the check to first actual use, where a
+ * misconfigured deployment still fails loudly.
+ */
+function jwtSecret(): Uint8Array {
+  if (!cachedSecret) {
+    cachedSecret = new TextEncoder().encode(
+      resolveJwtSecret(process.env.JWT_SECRET, process.env.NODE_ENV)
+    );
+  }
+  return cachedSecret;
+}
 
 const COOKIE_NAME = "travel-planner-token";
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7 days
@@ -66,12 +102,12 @@ export async function createToken(user: SessionUser): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${days}d`)
-    .sign(JWT_SECRET);
+    .sign(jwtSecret());
 }
 
 export async function verifyToken(token: string): Promise<JwtPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     return payload as unknown as JwtPayload;
   } catch {
     return null;
