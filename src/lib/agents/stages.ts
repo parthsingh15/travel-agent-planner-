@@ -34,6 +34,7 @@ export const STAGES = [
   "research:attractions:0",
   "research:attractions:1",
   "research:attractions:2",
+  "research:attractions:3",
   "research:route",
   "plan:build",
   "plan:enrich",
@@ -50,6 +51,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   "research:attractions:0": "activities",
   "research:attractions:1": "activities",
   "research:attractions:2": "activities",
+  "research:attractions:3": "activities",
   "research:route": "transportation",
   "plan:build": "budget",
   "plan:enrich": "itinerary",
@@ -266,7 +268,8 @@ async function runStage(
 
     case "research:attractions:0":
     case "research:attractions:1":
-    case "research:attractions:2": {
+    case "research:attractions:2":
+    case "research:attractions:3": {
       const batch = Number(stage.split(":")[2]);
       const w = await loadWorking(generationId);
 
@@ -278,7 +281,7 @@ async function runStage(
       const attractions = [...merged.values()].slice(0, KEEP.attractions);
 
       const next: Stage =
-        batch < 2 ? (`research:attractions:${batch + 1}` as Stage) : "research:route";
+        batch < 3 ? (`research:attractions:${batch + 1}` as Stage) : "research:route";
 
       await saveWorking(generationId, { attractions }, next, {
         activitiesOutput: asJson({ found: attractions.length }),

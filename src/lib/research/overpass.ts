@@ -100,7 +100,7 @@ function addressOf(tags: Record<string, string>): string | undefined {
 }
 
 /** Selectors are issued in batches of this size to stay under the time limit. */
-const BATCH_SIZE = 3;
+const BATCH_SIZE = 2;
 
 /** How many selector batches a category needs. */
 export function batchCount(category: PoiCategory): number {
@@ -148,7 +148,7 @@ async function runQuery(
   const parts = selectors
     .map((sel) => `  ${sel}(around:${radiusMetres},${center.lat},${center.lon});`)
     .join("\n");
-  const query = `[out:json][timeout:25];\n(\n${parts}\n);\nout center tags 200;`;
+  const query = `[out:json][timeout:18];\n(\n${parts}\n);\nout center tags 200;`;
 
   try {
     const res = await fetch(OVERPASS_URL, {
@@ -159,7 +159,7 @@ async function runQuery(
         Accept: "application/json",
       },
       body: new URLSearchParams({ data: query }),
-      signal: AbortSignal.timeout(28000),
+      signal: AbortSignal.timeout(20000),
     });
 
     if (!res.ok) {
