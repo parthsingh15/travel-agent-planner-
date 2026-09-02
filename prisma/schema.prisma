@@ -1,0 +1,451 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum TripStatus {
+  DRAFT
+  PLANNING
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum TravelStyle {
+  BUDGET
+  MID_RANGE
+  LUXURY
+  ADVENTURE
+  RELAXATION
+  CULTURAL
+}
+
+enum GenerationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum AuditAction {
+  USER_SIGNUP
+  USER_LOGIN
+  USER_LOGOUT
+  EMAIL_VERIFIED
+  PASSWORD_RESET
+  TRIP_CREATED
+  TRIP_UPDATED
+  TRIP_DELETED
+  ITINERARY_GENERATED
+  ITINERARY_SAVED
+  PAYMENT_CREATED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  ADMIN_ACTION
+  CHAT_MESSAGE
+  BOOKING_CREATED
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  PRICE_ALERT_CREATED
+  PRICE_ALERT_TRIGGERED
+  BOOKMARK_CREATED
+  BOOKMARK_DELETED
+  EXPENSE_CREATED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
+}
+
+enum BookmarkType {
+  FLIGHT
+  STAY
+  ACTIVITY
+  RESTAURANT
+  PLACE
+  ITINERARY
+}
+
+enum ExpenseCategory {
+  FLIGHTS
+  ACCOMMODATION
+  FOOD
+  ACTIVITIES
+  TRANSPORT
+  SHOPPING
+  OTHER
+}
+
+enum BookingType {
+  FLIGHT
+  STAY
+  ACTIVITY
+}
+
+enum BookingStatus {
+  DRAFT
+  PENDING_CONFIRMATION
+  CONFIRMED
+  CANCELLED
+  FAILED
+}
+
+enum BookingWorkflowStep {
+  SELECTED
+  REVIEWING
+  PAYMENT_PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PriceAlertStatus {
+  ACTIVE
+  TRIGGERED
+  EXPIRED
+  CANCELLED
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          Role     @default(USER)
+  emailVerified Boolean  @default(false)
+  profile       Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  otpVerifications OtpVerification[]
+  passwordResets   PasswordResetToken[]
+  trips            Trip[]
+  savedItineraries SavedItinerary[]
+  chatSessions     ChatSession[]
+  payments         Payment[]
+  auditLogs        AuditLog[]
+  priceAlerts      PriceAlert[]
+  bookings         Booking[]
+  bookmarks        Bookmark[]
+  expenses         Expense[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model OtpVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Trip {
+  id          String      @id @default(cuid())
+  userId      String
+  title       String
+  destination String
+  origin      String?
+  startDate   DateTime
+  endDate     DateTime
+  budget      Float
+  currency    String      @default("INR")
+  travelers   Int         @default(1)
+  interests   String[]
+  travelStyle TravelStyle @default(MID_RANGE)
+  status      TripStatus  @default(DRAFT)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generations      ItineraryGeneration[]
+  versions         ItineraryVersion[]
+  savedItineraries SavedItinerary[]
+  chatSessions     ChatSession[]
+  payments         Payment[]
+  priceAlerts      PriceAlert[]
+  bookings         Booking[]
+  bookmarks        Bookmark[]
+  expenses         Expense[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([destination])
+}
+
+model ItineraryGeneration {
+  id                   String           @id @default(cuid())
+  tripId               String
+  status               GenerationStatus @default(PENDING)
+  currentAgent         String?
+  destinationResearch  Json?
+  activitiesOutput     Json?
+  transportationOutput Json?
+  accommodationOutput  Json?
+  foodOutput           Json?
+  budgetOutput         Json?
+  flightsOutput        Json?
+  staysOutput          Json?
+  supervisorOutput     Json?
+  itineraryOutput      Json?
+  validationOutput     Json?
+  orchestratorNotes    String?
+  errorMessage         String?
+  startedAt            DateTime         @default(now())
+  completedAt          DateTime?
+  createdAt            DateTime         @default(now())
+
+  trip     Trip               @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  versions ItineraryVersion[]
+
+  @@index([tripId])
+  @@index([status])
+}
+
+model ItineraryVersion {
+  id            String   @id @default(cuid())
+  tripId        String
+  generationId  String
+  versionNumber Int
+  title         String
+  summary       String?
+  dayByDay      Json
+  totalBudget   Float?
+  metadata      Json?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  trip       Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  generation ItineraryGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  savedBy    SavedItinerary[]
+  bookmarks  Bookmark[]
+
+  @@unique([tripId, versionNumber])
+  @@index([tripId])
+  @@index([generationId])
+}
+
+model SavedItinerary {
+  id        String   @id @default(cuid())
+  userId    String
+  tripId    String
+  versionId String
+  name      String
+  createdAt DateTime @default(now())
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip    Trip             @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  version ItineraryVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, versionId])
+  @@index([userId])
+  @@index([tripId])
+}
+
+model ChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tripId    String?
+  title     String   @default("Travel Assistant")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip     Trip?         @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@index([tripId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  userId          String
+  tripId          String?
+  amount          Float
+  currency        String        @default("INR")
+  status          PaymentStatus @default(PENDING)
+  stripePaymentId String?       @unique
+  description     String?
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([status])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String?
+  action    AuditAction
+  entity    String?
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model PriceAlert {
+  id           String           @id @default(cuid())
+  userId       String
+  tripId       String?
+  type         BookingType
+  title        String
+  targetPrice  Float
+  currentPrice Float?
+  currency     String           @default("INR")
+  metadata     Json?
+  status       PriceAlertStatus @default(ACTIVE)
+  triggeredAt  DateTime?
+  expiresAt    DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([status])
+  @@index([type])
+}
+
+model Booking {
+  id               String              @id @default(cuid())
+  userId           String
+  tripId           String?
+  generationId     String?
+  type             BookingType
+  status           BookingStatus       @default(DRAFT)
+  workflowStep     BookingWorkflowStep @default(SELECTED)
+  title            String
+  description      String?
+  amount           Float
+  currency         String              @default("INR")
+  confirmationCode String?             @unique
+  confirmedAt      DateTime?
+  cancelledAt      DateTime?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([status])
+  @@index([type])
+  @@index([workflowStep])
+}
+
+/// Saved/bookmarked flights, hotels, places, restaurants and itineraries.
+/// `payload` keeps the full offer snapshot so a bookmark stays meaningful even
+/// after search inventory moves on.
+model Bookmark {
+  id         String       @id @default(cuid())
+  userId     String
+  tripId     String?
+  versionId  String?
+  type       BookmarkType
+  title      String
+  subtitle   String?
+  externalId String?
+  price      Float?
+  currency   String       @default("INR")
+  notes      String?
+  payload    Json?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip    Trip?             @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  version ItineraryVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  /// One bookmark per user per underlying item; re-saving is idempotent.
+  @@unique([userId, type, externalId])
+  @@index([userId])
+  @@index([tripId])
+  @@index([type])
+}
+
+/// Actual money spent on a trip, tracked against the planned budget.
+model Expense {
+  id          String          @id @default(cuid())
+  userId      String
+  tripId      String
+  category    ExpenseCategory
+  description String
+  amount      Float
+  currency    String          @default("INR")
+  spentAt     DateTime        @default(now())
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([category])
+  @@index([spentAt])
+}
