@@ -102,23 +102,35 @@ function addressOf(tags: Record<string, string>): string | undefined {
 /** Selectors are issued in batches of this size to stay under the time limit. */
 const BATCH_SIZE = 3;
 
+/** How many selector batches a category needs. */
+export function batchCount(category: PoiCategory): number {
+  return Math.ceil(SELECTORS[category].length / BATCH_SIZE);
+}
+
 export async function fetchPois(
   category: PoiCategory,
   center: { lat: number; lon: number },
-  radiusMetres = 15000
+  radiusMetres = 15000,
+  /** Run only this batch. Omit to run them all. */
+  onlyBatch?: number
 ): Promise<Poi[]> {
   const selectors = SELECTORS[category];
-  const batches: string[][] = [];
+  const allBatches: string[][] = [];
   for (let i = 0; i < selectors.length; i += BATCH_SIZE) {
-    batches.push(selectors.slice(i, i + BATCH_SIZE));
+    allBatches.push(selectors.slice(i, i + BATCH_SIZE));
   }
+  const batches =
+    onlyBatch === undefined ? allBatches : [allBatches[onlyBatch] ?? []];
 
   const merged = new Map<string, Poi>();
   for (const batch of batches) {
+    if (!batch.length) continue;
     // Overpass is a busy shared service; 429/504 are common and transient.
     let results = await runQuery(batch, center, radiusMetres, category);
-    for (let attempt = 0; !results.length && attempt < 2; attempt++) {
-      await new Promise((r) => setTimeout(r, 2500 * (attempt + 1)));
+    // One retry only: Overpass 429/504s are common, but a stage must stay
+    // comfortably inside a serverless time limit.
+    if (!results.length) {
+      await new Promise((r) => setTimeout(r, 1500));
       results = await runQuery(batch, center, radiusMetres, category);
     }
     for (const poi of results) merged.set(poi.id, poi);
@@ -136,7 +148,7 @@ async function runQuery(
   const parts = selectors
     .map((sel) => `  ${sel}(around:${radiusMetres},${center.lat},${center.lon});`)
     .join("\n");
-  const query = `[out:json][timeout:60];\n(\n${parts}\n);\nout center tags 200;`;
+  const query = `[out:json][timeout:25];\n(\n${parts}\n);\nout center tags 200;`;
 
   try {
     const res = await fetch(OVERPASS_URL, {
@@ -147,7 +159,7 @@ async function runQuery(
         Accept: "application/json",
       },
       body: new URLSearchParams({ data: query }),
-      signal: AbortSignal.timeout(75000),
+      signal: AbortSignal.timeout(28000),
     });
 
     if (!res.ok) {

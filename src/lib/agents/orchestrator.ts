@@ -1,18 +1,18 @@
 import { prisma } from "@/lib/db";
 import { GenerationStatus, TripStatus } from "@prisma/client";
-import { runResearchPipeline } from "./research-pipeline";
+import { advanceGeneration, STAGES, STAGE_LABELS } from "./stages";
 
 /**
  * Itinerary generation entry point.
  *
- * Generation is research-first: real places from OpenStreetMap, real distances
- * from OSRM, costs from a documented model where no live price exists, and a
- * verification pass that must approve the plan before it is saved.
+ * Generation is research-first (real places from OpenStreetMap, real distances
+ * from OSRM, costs from a documented model) and runs as a resumable stage
+ * machine: each request advances one stage. That keeps every request short
+ * enough for serverless hosting and lets an interrupted run resume rather than
+ * restart. See `stages.ts`.
  *
- * There is deliberately no mock/placeholder path. Previously, a missing
- * OPENAI_API_KEY silently produced filler content ("Morning activity",
- * "Coordinated by supervisor"). The research pipeline needs no LLM key, so a
- * generation either produces real researched output or fails loudly.
+ * There is deliberately no mock path — a generation either produces real
+ * researched output or fails loudly.
  */
 export async function startItineraryGeneration(tripId: string, userId: string) {
   const trip = await prisma.trip.findFirst({ where: { id: tripId, userId } });
@@ -28,7 +28,7 @@ export async function startItineraryGeneration(tripId: string, userId: string) {
       data: {
         tripId,
         status: GenerationStatus.IN_PROGRESS,
-        currentAgent: "research",
+        currentAgent: STAGE_LABELS[STAGES[0]],
       },
     });
     await tx.trip.update({
@@ -38,12 +38,11 @@ export async function startItineraryGeneration(tripId: string, userId: string) {
     return gen;
   });
 
-  // Fire-and-forget: the client polls the generation record for progress.
-  runResearchPipeline(generation.id, tripId, userId).catch((err) => {
-    console.error("[generation] pipeline failed:", err);
-  });
+  // Run the first (fast) stage inline so the client sees immediate progress;
+  // the rest advance as the client polls.
+  await advanceGeneration(generation.id, tripId, userId);
 
   return { generationId: generation.id, mock: false, alreadyRunning: false };
 }
 
-export { runResearchPipeline };
+export { advanceGeneration };

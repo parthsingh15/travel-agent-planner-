@@ -109,21 +109,47 @@ export default function AIPlannerPage({
       .finally(() => setLoading(false));
   }, [fetchTrip, pollGeneration, id]);
 
+  // Generation runs as a resumable stage machine: each tick advances it by one
+  // stage, so no single request runs long enough to hit a serverless timeout.
+  // `busy` prevents overlapping advances if a stage outlives the interval.
   useEffect(() => {
     if (!generation || generation.status !== "IN_PROGRESS") return;
 
-    const interval = setInterval(async () => {
-      const updated = await pollGeneration(generation.id);
-      if (updated.status !== "IN_PROGRESS") {
-        clearInterval(interval);
-        if (updated.status === "COMPLETED") {
-          setActiveTab("itinerary");
-        }
-      }
-    }, 1500);
+    let busy = false;
+    let stopped = false;
 
-    return () => clearInterval(interval);
-  }, [generation, pollGeneration]);
+    const tick = async () => {
+      if (busy || stopped) return;
+      busy = true;
+      try {
+        const res = await fetch(
+          `/api/trips/${id}/generations/${generation.id}/advance`,
+          { method: "POST" }
+        );
+        const step = await res.json();
+
+        const updated = await pollGeneration(generation.id);
+
+        if (step?.done || updated.status !== "IN_PROGRESS") {
+          stopped = true;
+          clearInterval(interval);
+          if (updated.status === "COMPLETED") setActiveTab("itinerary");
+        }
+      } catch {
+        // Transient failure: the next tick retries from the same stage.
+      } finally {
+        busy = false;
+      }
+    };
+
+    const interval = setInterval(tick, 1500);
+    void tick();
+
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [generation, pollGeneration, id]);
 
   const handleStart = async () => {
     setStarting(true);

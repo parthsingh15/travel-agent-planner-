@@ -124,10 +124,6 @@ function scoreForInterests(poi: Poi, interests: string[]): number {
 export async function planTrip(
   input: PlanTripInput
 ): Promise<PlanSuccess | PlanFailure> {
-  const days = dayCount(input.startDate, input.endDate);
-  const nights = Math.max(0, days - 1);
-  const style = toStyleKey(input.travelStyle);
-
   const research: ResearchBundle | null = await researchTrip({
     destination: input.destination,
     origin: input.origin,
@@ -151,6 +147,24 @@ export async function planTrip(
         `real itinerary cannot be built for it.`,
     };
   }
+
+  return { ok: true, plan: await planFromResearch(research, input) };
+}
+
+/**
+ * The planning half of the pipeline: selection, budget fitting, assembly and
+ * verification over research that has already been gathered.
+ *
+ * Separated from `planTrip` so the resumable serverless pipeline can persist
+ * the research phase and run this stage on its own.
+ */
+export async function planFromResearch(
+  research: ResearchBundle,
+  input: PlanTripInput
+): Promise<PlanTripResult> {
+  const days = dayCount(input.startDate, input.endDate);
+  const nights = Math.max(0, days - 1);
+  const style = toStyleKey(input.travelStyle);
 
   // ── Selection: real places only, biased by the user's interests ──────────
   // research.attractions arrives notability-ordered. Preserve that as a
@@ -306,8 +320,6 @@ export async function planTrip(
   const finalBreakdown = costPlan(fitted.selection, ctx);
 
   return {
-    ok: true,
-    plan: {
       destination: research.destination.name,
       days: plannedDays,
       breakdown: finalBreakdown,
@@ -337,7 +349,6 @@ export async function planTrip(
             choiceReasons,
           }
         : null,
-    },
   };
 }
 
