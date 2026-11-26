@@ -1,96 +1,66 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireVerifiedAuth } from "@/lib/auth";
-import { createAuditLog } from "@/lib/audit";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api-response";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
-import { AuditAction, PaymentStatus } from "@prisma/client";
+import { createAuditLog } from "@/lib/audit";
+import { AuditAction } from "@prisma/client";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const session = await requireVerifiedAuth();
+    const user = await requireVerifiedAuth();
     const { id } = await params;
     const body = await request.json();
-
-    const payment = await prisma.payment.findFirst({
-      where: { id, userId: session.id },
-    });
-
-    if (!payment) {
-      return apiError("Payment not found", 404);
-    }
-
-    if (payment.status === PaymentStatus.SUCCEEDED) {
-      return apiSuccess({ payment, message: "Already completed" });
-    }
-
-    if (!isStripeConfigured()) {
-      const completed = await prisma.payment.update({
-        where: { id },
-        data: {
-          status: PaymentStatus.SUCCEEDED,
-          metadata: { mode: "demo", confirmedAt: new Date().toISOString() },
-        },
-      });
-
-      await createAuditLog({
-        userId: session.id,
-        action: AuditAction.PAYMENT_SUCCEEDED,
-        entity: "Payment",
-        entityId: id,
-      });
-
-      return apiSuccess({ payment: completed, demo: true });
-    }
-
-    if (!payment.stripePaymentId) {
-      return apiError("No Stripe payment associated", 400);
-    }
+    const payment = await prisma.payment.findFirst({ where: { id, userId: user.id } });
+    if (!payment) return apiError("Payment not found", 404);
+    if (!payment.stripePaymentId?.startsWith("cs_test_")) return apiError("No Stripe test checkout is associated with this payment.", 422);
+    if (!isStripeConfigured()) return apiError("Stripe test checkout is unavailable.", 503);
+    if (payment.status === "SUCCEEDED" || payment.status === "REFUNDED") return apiSuccess({ payment });
 
     const stripe = getStripe();
+    const checkout = await (async () => {
+      try {
+        let current = await stripe.checkout.sessions.retrieve(payment.stripePaymentId!, { expand: ["payment_intent"] });
+        if (current.livemode || current.client_reference_id !== id || current.metadata?.userId !== user.id ||
+            current.amount_total !== Math.round(payment.amount * 100) ||
+            current.currency !== payment.currency.toLowerCase()) return null;
+        if (body.cancel === true && current.status === "open") {
+          try {
+            await stripe.checkout.sessions.expire(current.id);
+          } catch {
+            // A completion can race the cancellation. Read Stripe's final state.
+          }
+          current = await stripe.checkout.sessions.retrieve(current.id, { expand: ["payment_intent"] });
+        }
+        return current;
+      } catch {
+        return null;
+      }
+    })();
+    if (!checkout) return apiError("Stripe could not verify this checkout.", 502);
 
-    if (body.paymentMethodId) {
-      await stripe.paymentIntents.confirm(payment.stripePaymentId, {
-        payment_method: body.paymentMethodId,
-      });
-    }
-
-    const intent = await stripe.paymentIntents.retrieve(payment.stripePaymentId);
-
-    const status =
-      intent.status === "succeeded"
-        ? PaymentStatus.SUCCEEDED
-        : intent.status === "canceled"
-          ? PaymentStatus.FAILED
-          : PaymentStatus.PENDING;
-
-    const updated = await prisma.payment.update({
-      where: { id },
-      data: {
-        status,
-        metadata: { stripeStatus: intent.status },
-      },
+    const intent = checkout.payment_intent;
+    const checkoutStatus = checkout.status === "complete" && checkout.payment_status === "paid"
+      ? "paid"
+      : checkout.status === "expired"
+        ? (body.cancel === true || (payment.metadata as { checkoutStatus?: string } | null)?.checkoutStatus === "cancelled" ? "cancelled" : "expired")
+        : typeof intent === "object" && intent?.last_payment_error
+          ? "failed"
+          : "pending";
+    const status = checkoutStatus === "paid" ? "SUCCEEDED" : checkoutStatus === "pending" ? "PENDING" : "FAILED";
+    const result = await prisma.payment.updateMany({
+      where: { id, updatedAt: payment.updatedAt, status: { notIn: ["SUCCEEDED", "REFUNDED"] } },
+      data: { status, metadata: { checkoutStatus } },
     });
-
-    if (status === PaymentStatus.SUCCEEDED) {
+    if (result.count && payment.status !== status && status !== "PENDING") {
       await createAuditLog({
-        userId: session.id,
-        action: AuditAction.PAYMENT_SUCCEEDED,
-        entity: "Payment",
-        entityId: id,
-      });
-    } else if (status === PaymentStatus.FAILED) {
-      await createAuditLog({
-        userId: session.id,
-        action: AuditAction.PAYMENT_FAILED,
-        entity: "Payment",
-        entityId: id,
+        userId: user.id, entity: "Payment", entityId: id,
+        action: status === "SUCCEEDED" ? AuditAction.PAYMENT_SUCCEEDED : AuditAction.PAYMENT_FAILED,
       });
     }
-
-    return apiSuccess({ payment: updated });
+    return apiSuccess({ payment: await prisma.payment.findUniqueOrThrow({ where: { id } }) });
   } catch (error) {
     return handleApiError(error);
   }

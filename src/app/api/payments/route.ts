@@ -31,6 +31,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = paymentSchema.parse(body);
 
+    if (!isStripeConfigured()) return apiError("Stripe test checkout is unavailable.", 503);
+    const amount = Math.round(data.amount * 100);
+    if (!["INR", "USD"].includes(data.currency) || amount < 50 || amount > 99_999_999) {
+      return apiError("Enter a valid INR or USD test amount.", 422);
+    }
+    const origin = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
     if (data.tripId) {
       const trip = await prisma.trip.findFirst({
         where: { id: data.tripId, userId: session.id },
@@ -44,7 +53,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId: session.id,
         tripId: data.tripId,
-        amount: data.amount,
+        amount: amount / 100,
         currency: data.currency,
         description: data.description || "Travel planning service",
         status: PaymentStatus.PENDING,
@@ -59,51 +68,37 @@ export async function POST(request: NextRequest) {
       ipAddress: getClientIp(request),
     });
 
-    if (!isStripeConfigured()) {
-      const completed = await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.SUCCEEDED,
-          stripePaymentId: `demo_${payment.id}`,
-          metadata: { mode: "demo", note: "Stripe not configured - demo payment" },
-        },
-      });
-
-      await createAuditLog({
-        userId: session.id,
-        action: AuditAction.PAYMENT_SUCCEEDED,
-        entity: "Payment",
-        entityId: payment.id,
-      });
-
-      return apiSuccess({
-        payment: completed,
-        demo: true,
-        message: "Demo payment completed (Stripe not configured)",
-      }, 201);
+    try {
+      const stripe = getStripe();
+      const returnUrl = new URL("/payments", origin);
+      returnUrl.searchParams.set("payment", payment.id);
+      const cancelUrl = new URL(returnUrl);
+      cancelUrl.searchParams.set("cancel", "1");
+      const checkout = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        success_url: returnUrl.href,
+        cancel_url: cancelUrl.href,
+        client_reference_id: payment.id,
+        metadata: { paymentId: payment.id, userId: session.id },
+        line_items: [{
+          quantity: 1,
+          price_data: {
+            currency: data.currency.toLowerCase(),
+            unit_amount: amount,
+            product_data: { name: payment.description || "Travel planning service" },
+          },
+        }],
+      }, { idempotencyKey: payment.id });
+      if (!checkout.url || checkout.livemode) throw new Error("Invalid test checkout");
+      await prisma.payment.update({ where: { id: payment.id }, data: { stripePaymentId: checkout.id } });
+      return apiSuccess({ checkoutUrl: checkout.url }, 201);
+    } catch {
+      await prisma.payment.update({ where: { id: payment.id }, data: {
+        status: "FAILED", metadata: { checkoutStatus: "failed" },
+      } });
+      return apiError("Could not start Stripe test checkout.", 502);
     }
-
-    const stripe = getStripe();
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(data.amount * 100),
-      currency: data.currency.toLowerCase(),
-      metadata: {
-        paymentId: payment.id,
-        userId: session.id,
-        tripId: data.tripId || "",
-      },
-      automatic_payment_methods: { enabled: true },
-    });
-
-    const updated = await prisma.payment.update({
-      where: { id: payment.id },
-      data: { stripePaymentId: paymentIntent.id },
-    });
-
-    return apiSuccess({
-      payment: updated,
-      clientSecret: paymentIntent.client_secret,
-    }, 201);
   } catch (error) {
     return handleApiError(error);
   }

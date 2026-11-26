@@ -17,6 +17,7 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
   try {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         accept: "application/json",
         "api-key": apiKey,
@@ -31,14 +32,13 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error("Brevo email error:", error);
+      console.error("Brevo email request failed", response.status);
       return false;
     }
 
     return true;
-  } catch (error) {
-    console.error("Failed to send email:", error);
+  } catch {
+    console.error("Failed to reach Brevo");
     return false;
   }
 }

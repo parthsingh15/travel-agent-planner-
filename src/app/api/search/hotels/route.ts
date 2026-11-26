@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { requireVerifiedAuth } from "@/lib/auth";
-import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { apiError, apiSuccess, handleApiError } from "@/lib/api-response";
 import { hotelSearchSchema } from "@/lib/validators";
-import { getInventoryProvider } from "@/lib/services/travel-inventory";
+import { QuoteError, signQuote, searchHotels } from "@/lib/services/live-quotes";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireVerifiedAuth();
+    const user = await requireVerifiedAuth();
     const { searchParams } = new URL(request.url);
 
     const query = hotelSearchSchema.parse(
@@ -26,20 +26,14 @@ export async function GET(request: NextRequest) {
       )
     );
 
-    const provider = getInventoryProvider();
-    const offers = await provider.searchHotels(query);
-
+    const offers = await searchHotels(query);
     return apiSuccess({
-      offers,
-      meta: {
-        count: offers.length,
-        provider: provider.name,
-        live: provider.live,
-        cheapestPrice: offers[0]?.comparison.cheapestPrice ?? null,
-        query,
-      },
+      offers: await Promise.all(offers.map(async (quote) => ({
+        ...quote, token: await signQuote(quote, user.id, "quote"), bookable: true,
+      }))),
     });
   } catch (error) {
+    if (error instanceof QuoteError) return apiError(error.message, error.status);
     return handleApiError(error);
   }
 }

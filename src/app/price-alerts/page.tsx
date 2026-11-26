@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
+import { Card, CardContent } from "@/components/ui/card";
 import { LoadingState, ErrorState, EmptyState } from "@/components/ui/states";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Bell, TrendingDown, Plus } from "lucide-react";
+import { Bell } from "lucide-react";
 
 type PriceAlert = {
   id: string;
@@ -19,25 +19,23 @@ type PriceAlert = {
   status: string;
   triggeredAt?: string;
   createdAt: string;
-  trip?: { title: string; destination: string };
+  metadata?: {
+    quote?: { checkedAt: string; source: string; subtitle: string };
+    latestCheck?: { state: string; detail: string; at: string; price?: number; source?: string };
+    emailStatus?: string;
+  };
 };
 
 export default function PriceAlertsPage() {
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({
-    type: "FLIGHT",
-    title: "",
-    targetPrice: "",
-    currentPrice: "",
-  });
+  const [checking, setChecking] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const fetchAlerts = async () => {
     setLoading(true);
+    setError("");
     try {
       const res = await fetch("/api/price-alerts");
       const data = await res.json();
@@ -54,62 +52,23 @@ export default function PriceAlertsPage() {
     fetchAlerts();
   }, []);
 
-  const checkPrices = async () => {
-    setChecking(true);
+  const updateAlert = async (id: string, method: "POST" | "PATCH") => {
+    setChecking(id);
+    setActionError("");
     try {
       const res = await fetch("/api/price-alerts", {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check" }),
+        body: JSON.stringify(method === "POST" ? { action: "check", id } : { id, status: "CANCELLED" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      if (data.triggered?.length > 0) {
-        alert(`${data.triggered.length} price drop alert(s) triggered! Check your email.`);
-      } else {
-        alert("No price drops detected. Prices were updated.");
-      }
       await fetchAlerts();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Check failed");
+      setActionError(err instanceof Error ? err.message : "Could not update the alert.");
     } finally {
-      setChecking(false);
+      setChecking("");
     }
-  };
-
-  const createAlert = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    try {
-      const res = await fetch("/api/price-alerts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: form.type,
-          title: form.title,
-          targetPrice: parseFloat(form.targetPrice),
-          currentPrice: form.currentPrice ? parseFloat(form.currentPrice) : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setForm({ type: "FLIGHT", title: "", targetPrice: "", currentPrice: "" });
-      setShowForm(false);
-      await fetchAlerts();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to create alert");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const cancelAlert = async (id: string) => {
-    await fetch("/api/price-alerts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: "CANCELLED" }),
-    });
-    await fetchAlerts();
   };
 
   return (
@@ -122,65 +81,12 @@ export default function PriceAlertsPage() {
               Price Drop Alerts
             </h1>
             <p className="text-slate-600 mt-1">
-              Get notified when flight, stay, or activity prices drop to your target
+              Track flight and hotel quotes against your target price.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={checkPrices} loading={checking}>
-              <TrendingDown className="h-4 w-4" />
-              Check Prices
-            </Button>
-            <Button onClick={() => setShowForm(!showForm)}>
-              <Plus className="h-4 w-4" />
-              New Alert
-            </Button>
-          </div>
+          <Link className="text-primary-700" href="/search">Search live offers</Link>
         </div>
-
-        {showForm && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Create Price Alert</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={createAlert} className="space-y-4">
-                <Select
-                  label="Type"
-                  value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value })}
-                >
-                  <option value="FLIGHT">Flight</option>
-                  <option value="STAY">Stay</option>
-                  <option value="ACTIVITY">Activity</option>
-                </Select>
-                <Input
-                  label="Title (e.g. JFK to Tokyo round-trip)"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Target Price (alert when below)"
-                    type="number"
-                    step="0.01"
-                    required
-                    value={form.targetPrice}
-                    onChange={(e) => setForm({ ...form, targetPrice: e.target.value })}
-                  />
-                  <Input
-                    label="Current Price (optional)"
-                    type="number"
-                    step="0.01"
-                    value={form.currentPrice}
-                    onChange={(e) => setForm({ ...form, currentPrice: e.target.value })}
-                  />
-                </div>
-                <Button type="submit" loading={creating}>Create Alert</Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+        {actionError && <p role="alert" className="text-sm text-red-700">{actionError}</p>}
 
         {loading ? (
           <LoadingState />
@@ -189,8 +95,7 @@ export default function PriceAlertsPage() {
         ) : alerts.length === 0 ? (
           <EmptyState
             title="No price alerts"
-            description="Create alerts from agent recommendations or manually"
-            action={<Button onClick={() => setShowForm(true)}>Create Alert</Button>}
+            description="Set a target on a flight or hotel search result."
           />
         ) : (
           <div className="space-y-3">
@@ -225,13 +130,16 @@ export default function PriceAlertsPage() {
                         </span>
                       </div>
                       <h3 className="font-medium">{alert.title}</h3>
+                      {alert.metadata?.quote?.subtitle && (
+                        <p className="text-sm text-slate-600">{alert.metadata.quote.subtitle}</p>
+                      )}
                       <div className="flex gap-4 mt-2 text-sm">
                         <span>
                           Target: <strong>{formatCurrency(alert.targetPrice, alert.currency)}</strong>
                         </span>
                         {alert.currentPrice && (
                           <span>
-                            Current:{" "}
+                            Last quoted:{" "}
                             <strong
                               className={
                                 alert.currentPrice <= alert.targetPrice
@@ -244,16 +152,34 @@ export default function PriceAlertsPage() {
                           </span>
                         )}
                       </div>
+                      {alert.metadata?.latestCheck ? (
+                        <p className="mt-2 text-sm text-slate-600">
+                          {alert.metadata.latestCheck.detail} {alert.metadata.latestCheck.source} · {new Date(alert.metadata.latestCheck.at).toLocaleString()}
+                        </p>
+                      ) : alert.metadata?.quote ? (
+                        <p className="mt-2 text-sm text-slate-600">
+                          {alert.metadata.quote.source} · Quoted {new Date(alert.metadata.quote.checkedAt).toLocaleString()}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-sm text-slate-600">Set a new alert from live search to track this trip.</p>
+                      )}
                       {alert.triggeredAt && (
-                        <p className="text-xs text-green-600 mt-1">
-                          Triggered {formatDate(alert.triggeredAt)}
+                        <p role="status" className="text-sm text-green-700 mt-1">
+                          Target reached {formatDate(alert.triggeredAt)}
+                          {alert.metadata?.emailStatus === "sent" && " · Email sent"}
+                          {alert.metadata?.emailStatus === "failed" && " · Email unavailable"}
                         </p>
                       )}
                     </div>
                     {alert.status === "ACTIVE" && (
-                      <Button size="sm" variant="ghost" onClick={() => cancelAlert(alert.id)}>
-                        Cancel
-                      </Button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {alert.metadata?.quote && (
+                          <Button size="sm" variant="outline" loading={checking === alert.id}
+                            disabled={!!checking} onClick={() => updateAlert(alert.id, "POST")}>Check now</Button>
+                        )}
+                        <Button size="sm" variant="ghost" disabled={!!checking}
+                          onClick={() => updateAlert(alert.id, "PATCH")}>Cancel</Button>
+                      </div>
                     )}
                   </div>
                 </CardContent>

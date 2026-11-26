@@ -73,7 +73,7 @@ checkable.
 | Tests | Vitest |
 
 **Only one API key is required** (Gemini, free tier). OpenStreetMap, OSRM and
-Open-Meteo are keyless; Brevo and Stripe degrade to console/demo modes.
+Open-Meteo are keyless. Verified email delivery and Stripe Checkout require provider credentials.
 
 ---
 
@@ -207,3 +207,21 @@ npm run test:coverage
 ## License
 
 MIT
+
+### Live travel on Vercel Preview
+
+Set `SERPAPI_API_KEY` with Google Flights and Google Hotels access, a separate Preview
+`DATABASE_URL` and `JWT_SECRET`, a Stripe test `STRIPE_SECRET_KEY`, and
+`BREVO_API_KEY` with a verified `BREVO_SENDER_EMAIL`. Initialize the schema only against
+the isolated Preview database. This feature uses existing PostgreSQL tables and adds
+no schema migration. Use a verified test account and a mailbox you control.
+
+Search quotes come from SerpApi and booking links are resolved on demand. Booking history
+records provider handoffs as pending. Stripe Checkout is a separate test payment flow.
+A round trip requires selecting an outbound leg before pricing the full itinerary.
+
+Set `CRON_SECRET` to authorize the daily price-check route. Vercel Cron calls
+`GET /api/cron/price-alerts` on production deployments at 03:00 UTC (08:30 IST).
+For Preview verification, invoke the endpoint with the bearer secret or use Check now.
+Each run checks up to 10 active alerts, oldest check first. A triggered alert appears in
+Price Alerts once. Brevo delivery status appears on the alert after the send attempt.

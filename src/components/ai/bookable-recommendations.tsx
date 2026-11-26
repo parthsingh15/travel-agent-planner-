@@ -111,7 +111,7 @@ export function BookableRecommendations({
     });
     const data = await res.json();
     if (res.ok) {
-      alert(`Booking created! Go to Bookings to complete confirmation workflow.`);
+      alert(`Draft saved. Use Search to find a live provider offer.`);
       window.location.href = "/bookings";
     } else {
       alert(data.error || "Booking failed");
@@ -139,7 +139,7 @@ export function BookableRecommendations({
       }),
     });
     if (res.ok) {
-      alert("Price alert created!");
+      alert("Recommendation saved. Set an alert on a live search result to track current quotes.");
     } else {
       const data = await res.json();
       alert(data.error || "Failed to create alert");

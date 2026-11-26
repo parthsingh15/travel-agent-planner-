@@ -5,6 +5,7 @@ import { requireVerifiedAuth } from "@/lib/auth";
 import { createAuditLog, getClientIp } from "@/lib/audit";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api-response";
 import { createBookmarkSchema } from "@/lib/validators";
+import { readQuote, QuoteError, type Quote } from "@/lib/services/live-quotes";
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ bookmarks });
   } catch (error) {
+    if (error instanceof QuoteError) return apiError(error.message, error.status);
     return handleApiError(error);
   }
 }
@@ -39,7 +41,12 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireVerifiedAuth();
     const body = await request.json();
-    const data = createBookmarkSchema.parse(body);
+    const quote = typeof body?.token === "string" ? await readQuote<Quote>(body.token, session.id, "quote") : undefined;
+    const data = createBookmarkSchema.parse(quote ? {
+      type: quote.type, title: quote.title, subtitle: quote.subtitle.slice(0, 500),
+      externalId: quote.id, price: quote.price, currency: quote.currency,
+      payload: { source: quote.source, checkedAt: quote.checkedAt },
+    } : body);
 
     // Only ever bookmark records the caller actually owns.
     if (data.tripId) {
@@ -75,21 +82,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const bookmark = await prisma.bookmark.create({
-      data: {
-        userId: session.id,
-        tripId: data.tripId,
-        versionId: data.versionId,
-        type: data.type,
-        title: data.title,
-        subtitle: data.subtitle,
-        externalId: data.externalId,
-        price: data.price,
-        currency: data.currency,
-        notes: data.notes,
-        payload: data.payload as Prisma.InputJsonValue | undefined,
-      },
-    });
+    let bookmark;
+    try {
+      bookmark = await prisma.bookmark.create({
+        data: {
+          userId: session.id,
+          tripId: data.tripId,
+          versionId: data.versionId,
+          type: data.type,
+          title: data.title,
+          subtitle: data.subtitle,
+          externalId: data.externalId,
+          price: data.price,
+          currency: data.currency,
+          notes: data.notes,
+          payload: data.payload as Prisma.InputJsonValue | undefined,
+        },
+      });
+
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002" || !data.externalId) throw error;
+      const existing = await prisma.bookmark.findUniqueOrThrow({
+        where: { userId_type_externalId: { userId: session.id, type: data.type, externalId: data.externalId } },
+      });
+      return apiSuccess({ bookmark: existing, alreadySaved: true });
+    }
 
     await createAuditLog({
       userId: session.id,
@@ -102,6 +119,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ bookmark, alreadySaved: false }, 201);
   } catch (error) {
+    if (error instanceof QuoteError) return apiError(error.message, error.status);
     return handleApiError(error);
   }
 }

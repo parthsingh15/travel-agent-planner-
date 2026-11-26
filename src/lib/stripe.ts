@@ -5,8 +5,8 @@ let stripeClient: Stripe | null = null;
 export function getStripe(): Stripe {
   if (!stripeClient) {
     const secretKey = process.env.STRIPE_SECRET_KEY;
-    if (!secretKey) {
-      throw new Error("STRIPE_SECRET_KEY is not configured");
+    if (!isStripeConfigured() || !secretKey) {
+      throw new Error("Stripe test credentials are not configured");
     }
     stripeClient = new Stripe(secretKey, {
       apiVersion: "2025-02-24.acacia",
@@ -17,5 +17,5 @@ export function getStripe(): Stripe {
 
 export function isStripeConfigured(): boolean {
   const key = process.env.STRIPE_SECRET_KEY;
-  return !!key && !key.includes("placeholder");
+  return !!key && /^(sk|rk)_test_[A-Za-z0-9]{16,}$/.test(key);
 }

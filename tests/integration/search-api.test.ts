@@ -1,15 +1,41 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const requireVerifiedAuth = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   requireVerifiedAuth: () => requireVerifiedAuth(),
+  resolveJwtSecret: () => "fixture-only-signing-key-not-for-deployment",
 }));
 
 import { NextRequest } from "next/server";
 import { GET as searchFlights } from "@/app/api/search/flights/route";
 import { GET as searchHotels } from "@/app/api/search/hotels/route";
+
+const provider = vi.fn();
+beforeEach(() => {
+  vi.stubEnv("SERPAPI_API_KEY", "fixture-key");
+  vi.stubGlobal("fetch", provider);
+  provider.mockReset().mockImplementation(async (url: URL) => Response.json(
+    url.searchParams.get("engine") === "google_flights" ? {
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: "LHR", time: "2026-06-01 13:00" },
+          arrival_airport: { id: "HND", time: "2026-06-02 12:00" },
+          airline: "Fixture Airline", flight_number: "XX 1",
+        }],
+        price: 53421, booking_token: "provider-booking-token",
+      }],
+    } : {
+      properties: [{ name: "Fixture Hotel", property_token: "fixture-property", overall_rating: 4.5,
+        total_rate: { extracted_after_taxes_fees: 28150, extracted_display_price: 26000 } }],
+    }
+  ));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 const SESSION = {
   id: "user-1",
@@ -60,24 +86,23 @@ describe("GET /api/search/flights", () => {
     expect((await res.json()).details).toHaveProperty("returnDate");
   });
 
-  it("returns offers with vendor price comparison", async () => {
-    const res = await searchFlights(
-      get(
-        "/api/search/flights?origin=LHR&destination=HND&departDate=2026-06-01&passengers=2"
-      )
-    );
-    const body = await res.json();
-
+  it("returns the provider amount, currency, source and a signed result", async () => {
+    const res = await searchFlights(get("/api/search/flights?origin=LHR&destination=HND&departDate=2026-06-01&passengers=2"));
     expect(res.status).toBe(200);
-    expect(body.offers.length).toBeGreaterThan(0);
-    expect(body.meta.count).toBe(body.offers.length);
-    expect(body.meta.provider).toBe("sandbox");
-    expect(body.meta.live).toBe(false);
+    const { offers } = await res.json();
+    expect(offers).toHaveLength(1);
+    expect(offers[0]).toMatchObject({ price: 53421, currency: "INR", source: "Google Flights via SerpApi", token: expect.any(String) });
+    expect(Number.isNaN(Date.parse(offers[0].checkedAt))).toBe(false);
+    expect(offers[0]).not.toHaveProperty("comparison");
+    expect(provider.mock.calls[0][0].searchParams.get("no_cache")).toBe("true");
+  });
 
-    const [offer] = body.offers;
-    expect(offer.comparison.quotes.length).toBeGreaterThanOrEqual(3);
-    expect(offer.comparison.cheapestPrice).toBe(offer.comparison.quotes[0].price);
-    expect(body.meta.cheapestPrice).toBe(offer.comparison.cheapestPrice);
+  it("shows unavailability when the provider key is missing", async () => {
+    vi.stubEnv("SERPAPI_API_KEY", "");
+    const res = await searchFlights(get("/api/search/flights?origin=LHR&destination=HND&departDate=2026-06-01"));
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toMatch(/unavailable/);
+    expect(provider).not.toHaveBeenCalled();
   });
 
   it("coerces numeric query params from strings", async () => {
@@ -87,7 +112,8 @@ describe("GET /api/search/flights", () => {
       )
     );
 
-    expect((await res.json()).meta.query.passengers).toBe(3);
+    expect(res.status).toBe(200);
+    expect(provider.mock.calls[0][0].searchParams.get("adults")).toBe("3");
   });
 });
 
@@ -107,7 +133,7 @@ describe("GET /api/search/hotels", () => {
     expect((await res.json()).details).toHaveProperty("checkOut");
   });
 
-  it("returns hotel offers with nightly and total pricing", async () => {
+  it("returns the provider total for the stay", async () => {
     const res = await searchHotels(
       get(
         "/api/search/hotels?destination=Tokyo&checkIn=2026-06-01&checkOut=2026-06-08&guests=2"
@@ -116,11 +142,8 @@ describe("GET /api/search/hotels", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.offers.length).toBeGreaterThan(0);
-    for (const offer of body.offers) {
-      expect(offer.nights).toBe(7);
-      expect(offer.totalPrice).toBeGreaterThan(0);
-    }
+    expect(body.offers).toHaveLength(1);
+    expect(body.offers[0]).toMatchObject({ price: 28150, currency: "INR", source: "Google Hotels via SerpApi" });
   });
 
   it("applies the minRating filter", async () => {
@@ -132,8 +155,6 @@ describe("GET /api/search/hotels", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    for (const offer of body.offers) {
-      expect(offer.guestRating).toBeGreaterThanOrEqual(9);
-    }
+    expect(body.offers).toEqual([]);
   });
 });

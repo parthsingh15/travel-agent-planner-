@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,28 @@ type Payment = {
   currency: string;
   status: string;
   description?: string;
+  stripePaymentId?: string;
+  metadata?: { checkoutStatus?: string; mode?: string };
   createdAt: string;
   trip?: { title: string; destination: string };
 };
 
+function paymentLabel(payment: Payment) {
+  const labels: Record<string, string> = {
+    paid: "Succeeded", cancelled: "Cancelled", failed: "Failed", expired: "Expired", pending: "Pending",
+  };
+  if (payment.status === "REFUNDED") return "Refunded";
+  if (payment.metadata?.mode === "demo" || payment.stripePaymentId?.startsWith("demo_")) return "Legacy demo";
+  return labels[payment.metadata?.checkoutStatus ?? ""] ?? payment.status;
+}
+
 function PaymentsContent() {
   const searchParams = useSearchParams();
   const tripId = searchParams.get("tripId");
+  const returnedPayment = searchParams.get("payment");
+  const cancelled = searchParams.get("cancel") === "1";
+  const [notice, setNotice] = useState("");
+  const [verifying, setVerifying] = useState("");
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -30,7 +45,7 @@ function PaymentsContent() {
   const [amount, setAmount] = useState("49.99");
   const [description, setDescription] = useState("Premium itinerary generation");
 
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/payments");
@@ -42,13 +57,34 @@ function PaymentsContent() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchPayments();
   }, []);
 
+  const verifyPayment = useCallback(async (id: string, cancel = false) => {
+    setVerifying(id);
+    setError("");
+    try {
+      const res = await fetch(`/api/payments/${id}/confirm`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cancel }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setNotice(`Stripe test checkout · ${paymentLabel(data.payment)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify Stripe checkout.");
+    } finally {
+      setVerifying("");
+      await fetchPayments();
+    }
+  }, [fetchPayments]);
+
+  useEffect(() => {
+    if (returnedPayment) void verifyPayment(returnedPayment, cancelled);
+    else void fetchPayments();
+  }, [returnedPayment, cancelled, verifyPayment, fetchPayments]);
+
   const handlePayment = async () => {
+    setError("");
     setPaying(true);
     try {
       const res = await fetch("/api/payments", {
@@ -65,29 +101,10 @@ function PaymentsContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      if (data.demo) {
-        alert("Demo payment completed successfully!");
-        await fetchPayments();
-        return;
-      }
-
-      if (data.clientSecret) {
-        const confirmRes = await fetch(`/api/payments/${data.payment.id}/confirm`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        const confirmData = await confirmRes.json();
-        if (confirmRes.ok) {
-          alert("Payment processed!");
-        } else {
-          throw new Error(confirmData.error);
-        }
-      }
-
-      await fetchPayments();
+      if (!data.checkoutUrl) throw new Error("Stripe checkout URL is unavailable.");
+      window.location.assign(data.checkoutUrl);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Payment failed");
+      setError(err instanceof Error ? err.message : "Payment failed");
     } finally {
       setPaying(false);
     }
@@ -103,6 +120,9 @@ function PaymentsContent() {
           </p>
         </div>
 
+        {notice && <p role="status" className="text-sm text-slate-700">{notice}</p>}
+        {error && <ErrorState message={error} />}
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -112,7 +132,7 @@ function PaymentsContent() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Input
-              label="Amount (USD)"
+              label={`Amount (${DEFAULT_CURRENCY})`}
               type="number"
               step="0.01"
               value={amount}
@@ -142,8 +162,7 @@ function PaymentsContent() {
           <CardContent>
             {loading ? (
               <LoadingState />
-            ) : error ? (
-              <ErrorState message={error} onRetry={fetchPayments} />
+
             ) : payments.length === 0 ? (
               <EmptyState title="No payments yet" />
             ) : (
@@ -170,7 +189,7 @@ function PaymentsContent() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {payment.status === "SUCCEEDED" && (
+                      {paymentLabel(payment) === "Succeeded" && (
                         <CheckCircle className="h-5 w-5 text-green-500" />
                       )}
                       <span
@@ -182,8 +201,12 @@ function PaymentsContent() {
                               : "text-yellow-600"
                         }`}
                       >
-                        {payment.status}
+                        {paymentLabel(payment)}
                       </span>
+                      {payment.stripePaymentId?.startsWith("cs_test_") && payment.status !== "SUCCEEDED" && payment.status !== "REFUNDED" && (
+                        <Button size="sm" variant="outline" loading={verifying === payment.id}
+                          onClick={() => verifyPayment(payment.id)}>Check status</Button>
+                      )}
                     </div>
                   </div>
                 ))}
