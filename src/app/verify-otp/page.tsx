@@ -12,7 +12,8 @@ function VerifyOtpForm() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email") || "";
   const [code, setCode] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(searchParams.get("delivery") === "failed"
+    ? "Your account was created, but we could not send the verification email. Use Resend code to try again." : "");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [message, setMessage] = useState("");
@@ -46,6 +47,7 @@ function VerifyOtpForm() {
 
   const handleResend = async () => {
     setResending(true);
+    setError("");
     setMessage("");
     try {
       const res = await fetch("/api/auth/resend-otp", {
@@ -55,7 +57,7 @@ function VerifyOtpForm() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMessage("OTP resent! Check your email (or server console in dev mode).");
+        setMessage("Verification code sent. Check your email.");
       } else {
         setError(data.error);
       }
@@ -74,7 +76,7 @@ function VerifyOtpForm() {
         </div>
         <CardTitle>Verify your email</CardTitle>
         <p className="text-sm text-slate-600 mt-1">
-          Enter the 6-digit code sent to {email}
+          Enter the 6-digit verification code for {email}
         </p>
       </CardHeader>
       <CardContent>

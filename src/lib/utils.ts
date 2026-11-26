@@ -51,7 +51,7 @@ export function formatDate(date: Date | string) {
 }
 
 export function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return (100000 + crypto.getRandomValues(new Uint32Array(1))[0] % 900000).toString();
 }
 
 export function getOtpExpiry(): Date {

@@ -37,7 +37,9 @@ export default function SignupPage() {
         return;
       }
 
-      router.push(`/verify-otp?email=${encodeURIComponent(form.email)}`);
+      const query = new URLSearchParams({ email: data.email });
+      if (data.emailSent === false) query.set("delivery", "failed");
+      router.push(`/verify-otp?${query}`);
     } catch {
       setError("Network error. Please try again.");
     } finally {

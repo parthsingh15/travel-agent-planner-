@@ -10,13 +10,17 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
   const senderName = process.env.BREVO_SENDER_NAME || "Travel Planner";
 
   if (!apiKey) {
+    if (process.env.NODE_ENV !== "development") return false;
     console.log("[DEV EMAIL]", params.to, params.subject, params.htmlContent);
     return true;
   }
 
+  if (!process.env.BREVO_SENDER_EMAIL) return false;
+
   try {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
+      signal: AbortSignal.timeout(10000),
       headers: {
         accept: "application/json",
         "api-key": apiKey,
@@ -31,8 +35,7 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error("Brevo email error:", error);
+      console.error("Brevo email request failed", response.status);
       return false;
     }
 

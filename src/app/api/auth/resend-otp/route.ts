@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await sendOtpEmail(user.email, user.name, otp);
+    if (!await sendOtpEmail(user.email, user.name, otp)) {
+      return apiError("Could not send the verification email. Try Resend code again later.", 503);
+    }
 
     return apiSuccess({ message: "OTP resent successfully" });
   } catch (error) {

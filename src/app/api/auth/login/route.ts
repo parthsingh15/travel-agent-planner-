@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import {
   verifyPassword,
   createToken,
+  clearAuthCookie,
   setAuthCookie,
 } from "@/lib/auth";
 import { createAuditLog, getClientIp } from "@/lib/audit";
@@ -26,6 +27,11 @@ export async function POST(request: NextRequest) {
     const valid = await verifyPassword(data.password, user.passwordHash);
     if (!valid) {
       return apiError("Invalid email or password", 401);
+    }
+
+    if (!user.emailVerified) {
+      await clearAuthCookie();
+      return apiSuccess({ requiresVerification: true });
     }
 
     const token = await createToken({

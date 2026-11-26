@@ -33,16 +33,19 @@ export async function POST(request: NextRequest) {
       return apiError("Invalid or expired OTP", 400);
     }
 
-    await prisma.$transaction([
-      prisma.otpVerification.update({
-        where: { id: otp.id },
-        data: { used: true },
-      }),
-      prisma.user.update({
-        where: { id: user.id },
+    const verified = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.user.updateMany({
+        where: { id: user.id, emailVerified: false },
         data: { emailVerified: true },
-      }),
-    ]);
+      });
+      if (!claimed.count) return false;
+      await tx.otpVerification.update({
+        where: { id: otp.id, used: false, expiresAt: { gt: new Date() } },
+        data: { used: true },
+      });
+      return true;
+    });
+    if (!verified) return apiError("Email already verified. Please sign in.", 400);
 
     const token = await createToken({
       id: user.id,

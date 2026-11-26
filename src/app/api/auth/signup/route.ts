@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       return newUser;
     });
 
-    await sendOtpEmail(user.email, user.name, otp);
+    const emailSent = await sendOtpEmail(user.email, user.name, otp);
 
     await createAuditLog({
       userId: user.id,
@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess(
       {
-        message: "Account created. Please verify your email with the OTP sent.",
+        message: emailSent ? "Account created. Please verify your email." : "Account created. Use Resend code to request a verification email.",
+        emailSent,
         email: user.email,
         requiresVerification: true,
       },
