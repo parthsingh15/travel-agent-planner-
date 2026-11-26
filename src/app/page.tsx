@@ -9,7 +9,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2 font-bold text-primary-600 text-xl">
             <Plane className="h-7 w-7" />
-            Travel Planner
+            Travel Planner — India
           </div>
           <div className="flex gap-3">
             <Link href="/login">
@@ -28,23 +28,21 @@ export default function HomePage() {
           AI-Powered Multi-Agent Planning
         </div>
         <h1 className="text-5xl font-bold text-slate-900 mb-6 leading-tight">
-          Plan Your Perfect Trip with<br />
-          <span className="text-primary-600">Intelligent AI Agents</span>
+          Plan a day-by-day itinerary for your India trip
         </h1>
         <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-10">
-          Our multi-agent AI system researches destinations, plans activities,
-          finds accommodations, and creates personalized day-by-day itineraries.
+          Research places to visit, plan stays and transport, and review estimated costs against your budget. Save your itinerary and reopen it from My Trips.
         </p>
         <div className="flex gap-4 justify-center">
           <Link href="/signup">
-            <Button size="lg">Start Planning Free</Button>
+            <Button size="lg">Start Planning</Button>
           </Link>
           <Link href="/login">
             <Button size="lg" variant="outline">Sign In</Button>
           </Link>
         </div>
         <p className="text-center text-sm text-slate-500 mt-6">
-          Create a trip → Launch 9 AI agents → Get a validated day-by-day itinerary
+          Create a trip → Generate an itinerary → Review costs → Save to My Trips
         </p>
       </section>
 
@@ -61,7 +59,7 @@ export default function HomePage() {
               {
                 icon: Sparkles,
                 title: "AI Agents Collaborate",
-                description: "9 specialized agents research and plan every aspect of your trip.",
+                description: "The planning pipeline researches places, builds a daily schedule, and checks the estimated costs.",
               },
               {
                 icon: MessageSquare,
@@ -112,7 +110,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 text-center text-sm">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Shield className="h-4 w-4" />
-            Secure authentication, encrypted passwords, and complete trip history
+            Secure authentication, hashed passwords, and complete trip history
           </div>
           <p>&copy; 2026 Travel Planner. All rights reserved.</p>
         </div>

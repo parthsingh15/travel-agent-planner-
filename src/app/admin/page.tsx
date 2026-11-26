@@ -11,11 +11,6 @@ import {
   Users,
   Map,
   Sparkles,
-  CreditCard,
-  Activity,
-  Ticket,
-  Bookmark,
-  Bell,
   Wallet,
 } from "lucide-react";
 
@@ -24,11 +19,6 @@ type AdminData = {
     userCount: number;
     tripCount: number;
     generationCount: number;
-    paymentCount: number;
-    totalRevenue: number;
-    bookingCount: number;
-    bookmarkCount: number;
-    activeAlertCount: number;
     totalExpenses: number;
     generationsByStatus: Record<string, number>;
     generationSuccessRate: number | null;
@@ -37,7 +27,6 @@ type AdminData = {
   recentUsers: { id: string; name: string; email: string; role: string; createdAt: string }[];
   recentTrips: { id: string; title: string; destination: string; user: { name: string }; createdAt: string }[];
   recentGenerations: { id: string; status: string; trip: { title: string; destination: string }; createdAt: string }[];
-  recentPayments: { id: string; amount: number; currency: string; status: string; user: { name: string }; createdAt: string }[];
   recentAuditLogs: { id: string; action: string; entity?: string; user?: { name: string }; createdAt: string }[];
 };
 
@@ -47,10 +36,6 @@ const TABS = [
   { id: "trips", label: "Trips" },
   { id: "itineraries", label: "Itineraries" },
   { id: "generations", label: "AI Generations" },
-  { id: "bookings", label: "Bookings" },
-  { id: "bookmarks", label: "Saved Items" },
-  { id: "payments", label: "Payments" },
-  { id: "price-alerts", label: "Price Alerts" },
   { id: "audit-logs", label: "Audit Logs" },
 ] as const;
 
@@ -101,7 +86,7 @@ export default function AdminPage() {
         <div>
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
           <p className="text-slate-600 mt-1">
-            Manage users, trips, itineraries, AI runs, bookings, payments and alerts
+            Manage users, trips, itineraries, and AI runs
           </p>
         </div>
 
@@ -131,11 +116,6 @@ export default function AdminPage() {
             { label: "Users", value: analytics.userCount, icon: Users },
             { label: "Trips", value: analytics.tripCount, icon: Map },
             { label: "Generations", value: analytics.generationCount, icon: Sparkles },
-            { label: "Payments", value: analytics.paymentCount, icon: CreditCard },
-            { label: "Revenue", value: formatCurrency(analytics.totalRevenue), icon: Activity },
-            { label: "Bookings", value: analytics.bookingCount, icon: Ticket },
-            { label: "Saved items", value: analytics.bookmarkCount, icon: Bookmark },
-            { label: "Active alerts", value: analytics.activeAlertCount, icon: Bell },
             {
               label: "Logged expenses",
               value: formatCurrency(analytics.totalExpenses),
@@ -220,26 +200,6 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle>Recent Payments</CardTitle></CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {data.recentPayments.map((p) => (
-                  <div key={p.id} className="flex justify-between text-sm p-2 bg-slate-50 rounded">
-                    <div>
-                      <p className="font-medium">{formatCurrency(p.amount, p.currency)}</p>
-                      <p className="text-slate-500">{p.user.name}</p>
-                    </div>
-                    <span className={`text-xs font-medium ${
-                      p.status === "SUCCEEDED" ? "text-green-600" : "text-red-600"
-                    }`}>
-                      {p.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <Card>

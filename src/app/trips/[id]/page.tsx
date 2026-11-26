@@ -27,7 +27,6 @@ import {
   IndianRupee,
   MessageSquare,
   Bookmark,
-  CreditCard,
 } from "lucide-react";
 
 type StoredMetadata = {
@@ -77,6 +76,8 @@ export default function TripDetailPage({
   const [selectedVersion, setSelectedVersion] = useState(0);
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   const fetchTrip = async () => {
     setLoading(true);
@@ -86,6 +87,9 @@ export default function TripDetailPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setTrip(data.trip);
+      const requestedVersion = new URLSearchParams(window.location.search).get("version");
+      const index = (data.trip as Trip).versions.findIndex((version) => version.id === requestedVersion);
+      setSelectedVersion(Math.max(index, 0));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load trip");
     } finally {
@@ -99,7 +103,9 @@ export default function TripDetailPage({
   }, [id]);
 
   const handleSave = async () => {
-    if (!trip?.versions[selectedVersion] || !saveName) return;
+    if (!trip?.versions[selectedVersion] || !saveName.trim()) return;
+    setSaveStatus("");
+    setSaveError("");
     setSaving(true);
     try {
       const res = await fetch("/api/itineraries/saved", {
@@ -107,17 +113,17 @@ export default function TripDetailPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           versionId: trip.versions[selectedVersion].id,
-          name: saveName,
+          name: saveName.trim(),
         }),
       });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error);
       }
-      alert("Itinerary saved!");
+      setSaveStatus("Itinerary saved to My Trips.");
       setSaveName("");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Save failed");
+      setSaveError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -179,12 +185,6 @@ export default function TripDetailPage({
               <Button variant="outline">
                 <MessageSquare className="h-4 w-4" />
                 AI Chat
-              </Button>
-            </Link>
-            <Link href={`/payments?tripId=${trip.id}`}>
-              <Button variant="outline">
-                <CreditCard className="h-4 w-4" />
-                Pay
               </Button>
             </Link>
           </div>
@@ -257,16 +257,19 @@ export default function TripDetailPage({
                   <div className="mt-6 flex gap-2 items-end">
                     <input
                       type="text"
+                      aria-label="Itinerary name"
                       placeholder="Save as..."
                       value={saveName}
                       onChange={(e) => setSaveName(e.target.value)}
                       className="flex-1 px-3 py-2 border rounded-lg text-sm"
                     />
-                    <Button onClick={handleSave} loading={saving} disabled={!saveName}>
+                    <Button onClick={handleSave} loading={saving} disabled={saving || !saveName.trim()}>
                       <Bookmark className="h-4 w-4" />
                       Save
                     </Button>
                   </div>
+                  {saveStatus && <p role="status" className="mt-2 text-sm text-green-700">{saveStatus}</p>}
+                  {saveError && <p role="alert" className="mt-2 text-sm text-red-700">{saveError}</p>}
                 </>
               )}
             </CardContent>

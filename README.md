@@ -1,6 +1,6 @@
 # AI Travel Planner — India
 
-A full-stack travel planner that researches a trip before planning it, then builds
+An itinerary planner for trips in India. It researches a destination and builds
 a day-by-day itinerary from real places, real road distances and a hard budget
 constraint.
 
@@ -16,6 +16,10 @@ Built with Next.js 15, PostgreSQL + Prisma, and Google Gemini.
 ---
 
 ## What it does
+
+Sign in, create a trip, and start AI planning. Open the generated trip to review
+the day-by-day itinerary and estimated budget. Name the itinerary, click Save,
+and select its name under that trip in My Trips whenever you want to reopen it.
 
 Enter a trip — say **Delhi → Manali, 5 days, 2 people, ₹50,000, nature + history** —
 and the app researches the destination, costs the trip against your budget, and
@@ -46,15 +50,13 @@ checkable.
   transport and contingency, each labelled verified or estimated
 - **AI assistant** — answers questions about *your* stored trip ("how much is
   left?", "is this too busy?", "suggest cheaper restaurants")
-- **Itinerary versioning** — regeneration never overwrites history
+- **Saved itineraries and version history** — name and save a version, then reopen it from My Trips
 - **Weather and maps** — live forecast with a seasonal fallback for far-future
   dates; OpenStreetMap location view
-- **Expenses, bookmarks and price alerts**
+- **Trip expense tracking** — record actual expenses separately from the estimated itinerary budget
 - **Auth** — JWT, bcrypt, 6-digit email OTP via Brevo, forgot/reset password
-- **Payments** — Stripe test mode (no card details stored)
-- **Admin dashboard** — users, trips, itineraries, AI runs, bookings, payments,
-  alerts and audit logs, with role-based access
-- **242 tests**, and CI running lint → typecheck → test → build
+- **Admin dashboard** — users, trips, itineraries, AI runs, and audit logs
+- **CI checks** — lint → typecheck → test → build
 
 ## Tech stack
 
@@ -69,11 +71,10 @@ checkable.
 | Routing | OSRM |
 | Weather | Open-Meteo |
 | Email | Brevo |
-| Payments | Stripe (test mode) |
 | Tests | Vitest |
 
 **Only one API key is required** (Gemini, free tier). OpenStreetMap, OSRM and
-Open-Meteo are keyless; Brevo and Stripe degrade to console/demo modes.
+Open-Meteo are keyless. Brevo delivers account emails when configured.
 
 ---
 
@@ -127,8 +128,7 @@ OPENAI_API_KEY="sk-..."                  # only needed for AI_PROVIDER=openai
 Keyless services (defaults work as-is): `OVERPASS_URL`, `NOMINATIM_URL`,
 `NOMINATIM_USER_AGENT`, `OSRM_BASE_URL`.
 
-Optional: `BREVO_API_KEY` (else OTP emails log to the console),
-`STRIPE_SECRET_KEY` (else demo payments).
+Optional: `BREVO_API_KEY` for account emails. Local development can use OTP codes from the console.
 
 See `.env.example` for the full list. **No key is ever exposed to the browser** —
 all AI calls are server-side, verified against the built client bundles.

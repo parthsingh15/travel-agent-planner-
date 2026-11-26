@@ -27,9 +27,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
           where: { userId: session.id },
           include: { version: true },
         },
-        payments: {
-          orderBy: { createdAt: "desc" },
-        },
       },
     });
 

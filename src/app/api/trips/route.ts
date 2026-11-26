@@ -14,6 +14,11 @@ export async function GET() {
       where: { userId: session.id },
       orderBy: { createdAt: "desc" },
       include: {
+        savedItineraries: {
+          where: { userId: session.id },
+          select: { id: true, name: true, versionId: true },
+          orderBy: { createdAt: "desc" },
+        },
         _count: {
           select: { versions: true, generations: true },
         },

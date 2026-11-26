@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingState, ErrorState } from "@/components/ui/states";
 import { AgentPipeline } from "@/components/ai/agent-pipeline";
 import { AgentOutputs } from "@/components/ai/agent-outputs";
-import { BookableRecommendations } from "@/components/ai/bookable-recommendations";
+import { ItineraryTimeline, type AnyDay } from "@/components/travel/itinerary-timeline";
 import { formatCurrency } from "@/lib/utils";
 import {
   Sparkles,
@@ -16,17 +16,7 @@ import {
   ArrowLeft,
   Bot,
   Calendar,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
-
-type DayPlan = {
-  day: number;
-  date: string;
-  title: string;
-  activities: { time: string; title: string; description: string }[];
-  meals: { type: string; restaurant: string }[];
-};
 
 type Generation = {
   id: string;
@@ -70,8 +60,7 @@ export default function AIPlannerPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"pipeline" | "outputs" | "book" | "itinerary">("pipeline");
-  const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([1]));
+  const [activeTab, setActiveTab] = useState<"pipeline" | "outputs" | "itinerary">("pipeline");
 
   const fetchTrip = useCallback(async () => {
     const res = await fetch(`/api/trips/${id}`);
@@ -172,7 +161,7 @@ export default function AIPlannerPage({
     title?: string;
     summary?: string;
     totalBudget?: number;
-    days?: DayPlan[];
+    days?: AnyDay[];
     tips?: string[];
   } | null;
 
@@ -232,7 +221,7 @@ export default function AIPlannerPage({
           <CardContent className="py-4">
             <p className="text-sm text-slate-700">
               <strong>Supervisor Agent</strong> coordinates dedicated <strong>Flight</strong>, <strong>Hotel</strong>, <strong>Activity</strong>, <strong>Restaurant</strong> and <strong>Transportation</strong> agents, grounded by <strong>Destination Research</strong>.
-              Book recommendations or set price drop alerts. Complete bookings through the confirmation workflow.
+              Stay, transport, and activity costs are planning estimates.
             </p>
           </CardContent>
         </Card>
@@ -271,7 +260,7 @@ export default function AIPlannerPage({
         )}
 
         <div className="flex gap-2 border-b border-slate-200">
-          {(["pipeline", "outputs", "book", "itinerary"] as const).map((tab) => (
+          {(["pipeline", "outputs", "itinerary"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -283,7 +272,6 @@ export default function AIPlannerPage({
             >
               {tab === "pipeline" && "Agent Pipeline"}
               {tab === "outputs" && "Agent Outputs"}
-              {tab === "book" && "Book & Alerts"}
               {tab === "itinerary" && "Final Itinerary"}
             </button>
           ))}
@@ -337,25 +325,6 @@ export default function AIPlannerPage({
             </Card>
           )}
 
-          {activeTab === "book" && (
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Book Flights, Stays & Activities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {generation ? (
-                  <BookableRecommendations
-                    generation={generation as Record<string, unknown>}
-                    tripId={id}
-                    currency={trip?.currency}
-                  />
-                ) : (
-                  <p className="text-slate-500 text-center py-8">Run AI planning first</p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {activeTab === "itinerary" && (
             <Card className="lg:col-span-2">
               <CardHeader>
@@ -380,49 +349,12 @@ export default function AIPlannerPage({
                       )}
                       {itinerary.totalBudget && trip && (
                         <p className="text-sm font-medium mt-2">
-                          Total Budget: {formatCurrency(itinerary.totalBudget, trip.currency)}
+                          Estimated total: {formatCurrency(itinerary.totalBudget, trip.currency)}
                         </p>
                       )}
                     </div>
 
-                    {itinerary.days.map((day) => (
-                      <div key={day.day} className="border rounded-lg">
-                        <button
-                          onClick={() => {
-                            const next = new Set(expandedDays);
-                            if (next.has(day.day)) next.delete(day.day);
-                            else next.add(day.day);
-                            setExpandedDays(next);
-                          }}
-                          className="w-full flex justify-between items-center p-4 hover:bg-slate-50"
-                        >
-                          <div className="text-left">
-                            <p className="font-semibold">Day {day.day}: {day.title}</p>
-                            <p className="text-sm text-slate-500">{day.date}</p>
-                          </div>
-                          {expandedDays.has(day.day) ? (
-                            <ChevronUp className="h-5 w-5" />
-                          ) : (
-                            <ChevronDown className="h-5 w-5" />
-                          )}
-                        </button>
-                        {expandedDays.has(day.day) && (
-                          <div className="px-4 pb-4 space-y-2">
-                            {day.activities.map((act, i) => (
-                              <div key={i} className="pl-3 border-l-2 border-primary-300">
-                                <p className="text-sm font-medium">{act.time} — {act.title}</p>
-                                <p className="text-sm text-slate-600">{act.description}</p>
-                              </div>
-                            ))}
-                            {day.meals?.map((meal, i) => (
-                              <p key={i} className="text-sm text-slate-600">
-                                {meal.type}: {meal.restaurant}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    <ItineraryTimeline days={itinerary.days} currency={trip?.currency} />
 
                     {itinerary.tips && (
                       <div className="bg-amber-50 p-4 rounded-lg">

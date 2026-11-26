@@ -7,15 +7,10 @@ import {
   LayoutDashboard,
   Map,
   MessageSquare,
-  CreditCard,
   Settings,
   Shield,
   LogOut,
   Plane,
-  Bell,
-  Ticket,
-  Search,
-  Bookmark,
 } from "lucide-react";
 
 type User = {
@@ -28,12 +23,7 @@ type User = {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/trips", label: "My Trips", icon: Map },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/bookmarks", label: "Saved", icon: Bookmark },
-  { href: "/bookings", label: "Bookings", icon: Ticket },
-  { href: "/price-alerts", label: "Price Alerts", icon: Bell },
   { href: "/chat", label: "AI Assistant", icon: MessageSquare },
-  { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/profile", label: "Profile", icon: Settings },
 ];
 

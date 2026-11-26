@@ -62,7 +62,7 @@ export function BudgetBreakdown({
           </tbody>
           <tfoot className="bg-slate-50">
             <tr className="border-t-2 border-slate-200">
-              <td className="px-4 py-2.5 font-semibold text-slate-900">Total trip cost</td>
+              <td className="px-4 py-2.5 font-semibold text-slate-900">Estimated trip total</td>
               <td className="px-4 py-2.5 text-right font-bold text-slate-900">
                 {formatCurrency(breakdown.total, currency)}
               </td>

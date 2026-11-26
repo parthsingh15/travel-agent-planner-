@@ -112,10 +112,3 @@ export function getAgentStatus(
 
   return "pending";
 }
-
-export const BOOKING_WORKFLOW_STEPS = [
-  { id: "SELECTED", label: "Selected", description: "Item chosen from agent recommendations" },
-  { id: "REVIEWING", label: "Reviewing", description: "Reviewing details and pricing" },
-  { id: "PAYMENT_PENDING", label: "Payment", description: "Processing payment" },
-  { id: "CONFIRMED", label: "Confirmed", description: "Booking confirmed with confirmation code" },
-] as const;

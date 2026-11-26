@@ -4,20 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import { Map, Bookmark, CreditCard, Plus, Sparkles } from "lucide-react";
+import { formatDate } from "@/lib/utils";
+import { Map, Bookmark, Plus } from "lucide-react";
 
 export default async function DashboardPage() {
   const session = await getSession();
   if (!session) return null;
 
-  const [trips, savedCount, payments, recentTrips] = await Promise.all([
+  const [trips, savedCount, recentTrips] = await Promise.all([
     prisma.trip.count({ where: { userId: session.id } }),
     prisma.savedItinerary.count({ where: { userId: session.id } }),
-    prisma.payment.findMany({
-      where: { userId: session.id, status: "SUCCEEDED" },
-      select: { amount: true },
-    }),
     prisma.trip.findMany({
       where: { userId: session.id },
       orderBy: { createdAt: "desc" },
@@ -27,8 +23,6 @@ export default async function DashboardPage() {
       },
     }),
   ]);
-
-  const totalSpent = payments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <DashboardLayout>
@@ -46,12 +40,10 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid sm:grid-cols-2 gap-4">
           {[
             { label: "Total Trips", value: trips, icon: Map, color: "text-blue-600 bg-blue-50" },
             { label: "Saved Itineraries", value: savedCount, icon: Bookmark, color: "text-green-600 bg-green-50" },
-            { label: "Payments", value: payments.length, icon: CreditCard, color: "text-purple-600 bg-purple-50" },
-            { label: "Total Spent", value: formatCurrency(totalSpent), icon: Sparkles, color: "text-orange-600 bg-orange-50" },
           ].map((stat) => (
             <Card key={stat.label}>
               <CardContent className="pt-6">

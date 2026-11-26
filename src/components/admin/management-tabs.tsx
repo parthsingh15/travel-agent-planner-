@@ -13,7 +13,7 @@ type UserRow = {
   role: "USER" | "ADMIN";
   emailVerified: boolean;
   createdAt: string;
-  _count: { trips: number; payments: number; bookings: number };
+  _count: { trips: number };
 };
 
 type TripRow = {
@@ -204,8 +204,7 @@ export function AdminManagementTabs({ resource }: { resource: string }) {
       header: "Activity",
       render: (row) => (
         <span className="text-xs text-slate-500">
-          {row._count.trips} trips · {row._count.bookings} bookings ·{" "}
-          {row._count.payments} payments
+          {row._count.trips} trips
         </span>
       ),
     },

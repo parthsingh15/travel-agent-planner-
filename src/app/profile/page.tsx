@@ -15,7 +15,7 @@ type User = {
   role: string;
   emailVerified: boolean;
   createdAt: string;
-  _count: { trips: number; savedItineraries: number; payments: number };
+  _count: { trips: number; savedItineraries: number };
 };
 
 export default function ProfilePage() {
@@ -103,7 +103,6 @@ export default function ProfilePage() {
               <div className="flex gap-4 text-sm">
                 <span>{user._count.trips} trips</span>
                 <span>{user._count.savedItineraries} saved</span>
-                <span>{user._count.payments} payments</span>
               </div>
             )}
             <Button onClick={handleSave} loading={saving}>

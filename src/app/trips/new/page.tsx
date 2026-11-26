@@ -87,7 +87,7 @@ export default function NewTripPage() {
               <Input
                 label="Trip Title"
                 required
-                placeholder="Summer in Paris"
+                placeholder="Five days in Manali"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
               />

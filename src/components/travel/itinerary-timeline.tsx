@@ -206,7 +206,7 @@ export function ItineraryTimeline({
                   Day {day.day} — {day.title}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {day.date} · {day.entries.length} stops ·{" "}
+                  {day.date} · {day.entries.length} stops · Estimated{" "}
                   {formatCurrency(day.dayCost, currency)}
                 </p>
               </div>
